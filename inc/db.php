@@ -2,11 +2,11 @@
 function getPDOForDb(string $db): PDO
 {
     // Ubah pengaturan ini sesuai lingkungan Anda
-    $host = 'localhost';
-    $port = 5432;
-    $user = 'postgres';
-    $pass = 'admin';
-
+    $host = getenv('PGHOST');
+    $port = getenv('PGPORT');
+    $user = getenv('PGUSER');
+    $pass = getenv('PGPASSWORD');
+    
     $dsn = "pgsql:host={$host};port={$port};dbname={$db}";
 
     try {

@@ -7,7 +7,11 @@ function getPDOForDb(string $db): PDO
     $user = getenv('PGUSER');
     $pass = getenv('PGPASSWORD');
     $db   = getenv('PGDATABASE');
-
+var_dump($host);
+var_dump($port);
+var_dump($user);
+var_dump($db);
+die();
 $dsn = "pgsql:host=$host;port=$port;dbname=$db";
     
     $dsn = "pgsql:host={$host};port={$port};dbname={$db}";

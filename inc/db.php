@@ -2,10 +2,10 @@
 function getPDOForDb(string $db): PDO
 {
     // Ubah pengaturan ini sesuai lingkungan Anda
-    $host = getenv('PGHOST');
-    $port = getenv('PGPORT');
-    $user = getenv('PGUSER');
-    $pass = getenv('PGPASSWORD');
+    $host = getenv('postgres.railway.internal');
+    $port = getenv('5432');
+    $user = getenv('postgres');
+    $pass = getenv('rUQCRgVgccITRegFsTFjayhCfGZsqIUF');
     
     $dsn = "pgsql:host={$host};port={$port};dbname={$db}";
 

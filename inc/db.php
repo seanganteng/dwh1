@@ -29,10 +29,10 @@ $dsn = "pgsql:host=$host;port=$port;dbname=$db";
 
 function getPDO(): PDO
 {
-    return getPDOForDb('db_dwh3project');
+    return getPDOForDb('db_dwh3');
 }
 
 function getOltpPDO(): PDO
 {
-    return getPDOForDb('db_dwh3');
+    return getPDOForDb('db_dwh3_oltp');
 }

@@ -4,7 +4,7 @@
 $pdo_oltp = getOltpPDO();
 $pdo_dwh = getPDO(); // mengambil koneksi ke db_dwh3project
 
-// Definisikan 4 query
+// Definisikan query perbandingan
 $queries = [
     'query1' => [
         'title' => 'Total Pendapatan per Bulan',
@@ -84,6 +84,241 @@ JOIN dim_produk dp
     ON fp.produk_key = dp.produk_key
 GROUP BY dp.kategori
 ORDER BY rata_rata_hari_pengiriman DESC"
+    ],
+    'query5' => [
+        'title' => 'Total Pelanggan',
+        'desc' => 'Menghitung jumlah total pelanggan. OLTP menghitung semua baris dari tabel customers (normalized), sedangkan DWH menghitung semua baris dari tabel dim_pelanggan (dimensi).',
+        'oltp_sql' => "SELECT COUNT(*) AS total_pelanggan
+FROM customers",
+        'dwh_sql' => "SELECT COUNT(*) AS total_pelanggan
+FROM dim_pelanggan"
+    ],
+    'query6' => [
+        'title' => 'Total Produk',
+        'desc' => 'Menghitung jumlah total produk. OLTP menghitung distinct product_id dari tabel products (normalized), sedangkan DWH menghitung semua baris dari tabel dim_produk (dimensi).',
+        'oltp_sql' => "SELECT COUNT(DISTINCT product_id) AS total_produk
+FROM products",
+        'dwh_sql' => "SELECT COUNT(*) AS total_produk
+FROM dim_produk"
+    ],
+    'query7' => [
+        'title' => 'Total Kategori Produk',
+        'desc' => 'Menghitung jumlah kategori produk. OLTP menghitung kategori unik dari tabel produk, sedangkan DWH menghitung kategori unik pada dimensi produk.',
+        'oltp_sql' => "SELECT COUNT(DISTINCT pct.product_category_name_english) AS total_kategori
+FROM products p
+LEFT JOIN product_category_translation pct ON p.product_category_name = pct.product_category_name",
+        'dwh_sql' => "SELECT COUNT(DISTINCT kategori_inggris) AS total_kategori
+FROM dim_produk"
+    ],
+    'query8' => [
+        'title' => 'Total Produk Terjual',
+        'desc' => 'Menghitung jumlah total produk terjual. OLTP menggunakan jumlah baris order_items, sedangkan DWH menggunakan total jumlah dari fakta penjualan.',
+        'oltp_sql' => "SELECT COUNT(*) AS total_produk_terjual
+FROM order_items",
+        'dwh_sql' => "SELECT SUM(jumlah) AS total_produk_terjual
+FROM fakta_penjualan"
+    ],
+    'query9' => [
+        'title' => 'Total Revenue',
+        'desc' => 'Menghitung total revenue penjualan. OLTP menjumlahkan harga order_items, sedangkan DWH menjumlahkan total_harga pada fakta penjualan.',
+        'oltp_sql' => "SELECT SUM(price) AS total_revenue
+FROM order_items",
+        'dwh_sql' => "SELECT SUM(total_harga) AS total_revenue
+FROM fakta_penjualan"
+    ],
+    'query10' => [
+        'title' => 'Revenue Per Waktu',
+        'desc' => 'Mengukur pendapatan terhadap dimensi waktu. OLTP mengelompokkan penjualan berdasarkan tahun dan bulan, sedangkan DWH menggunakan dim_waktu untuk agregasi yang sudah tersedia.',
+        'oltp_sql' => "SELECT 
+    EXTRACT(YEAR FROM o.order_purchase_timestamp) AS tahun,
+    EXTRACT(MONTH FROM o.order_purchase_timestamp) AS bulan,
+    SUM(oi.price) AS total_revenue
+FROM orders o
+JOIN order_items oi ON o.order_id = oi.order_id
+GROUP BY tahun, bulan
+ORDER BY tahun DESC, bulan DESC",
+        'dwh_sql' => "SELECT 
+    w.tahun,
+    w.bulan,
+    SUM(fp.total_harga) AS total_revenue
+FROM fakta_penjualan fp
+JOIN dim_waktu w ON fp.waktu_id = w.waktu_id
+GROUP BY w.tahun, w.bulan
+ORDER BY w.tahun DESC, w.bulan DESC"
+    ],
+    'query11' => [
+        'title' => 'Metode Pembayaran Terpopuler',
+        'desc' => 'Menentukan metode pembayaran yang paling sering digunakan. OLTP menggunakan tabel order_payments, sedangkan DWH menggunakan fakta_pembayaran dan dim_metode_pembayaran.',
+        'oltp_sql' => "SELECT 
+    payment_type AS metode_pembayaran,
+    COUNT(*) AS jumlah_penggunaan
+FROM order_payments
+GROUP BY payment_type
+ORDER BY jumlah_penggunaan DESC",
+        'dwh_sql' => "SELECT
+    dmp.metode_pembayaran,
+    COUNT(*) AS jumlah_penggunaan
+FROM fakta_pembayaran fp
+JOIN dim_metode_pembayaran dmp
+    ON fp.metode_key = dmp.metode_key
+GROUP BY dmp.metode_pembayaran
+ORDER BY jumlah_penggunaan DESC"
+    ],
+    'query12' => [
+        'title' => 'Top 10 Produk Terlaris',
+        'desc' => 'Menampilkan 10 produk dengan jumlah penjualan terbanyak. OLTP menggunakan order_items, sedangkan DWH menggunakan fakta_penjualan dan dim_produk.',
+        'oltp_sql' => "SELECT
+    oi.product_id,
+    COUNT(*) AS jumlah_terjual
+FROM order_items oi
+GROUP BY oi.product_id
+ORDER BY jumlah_terjual DESC
+LIMIT 10",
+        'dwh_sql' => "SELECT
+    dp.produk_id,
+    SUM(fp.jumlah) AS jumlah_terjual
+FROM fakta_penjualan fp
+JOIN dim_produk dp
+    ON fp.produk_key = dp.produk_key
+GROUP BY dp.produk_id
+ORDER BY jumlah_terjual DESC
+LIMIT 10"
+    ],
+    'query13' => [
+        'title' => 'Top 10 Seller Terbaik',
+        'desc' => 'Menampilkan 10 seller dengan revenue penjualan tertinggi. OLTP menggunakan order_items, sedangkan DWH menggunakan fakta_penjualan dan dim_seller.',
+        'oltp_sql' => "SELECT
+    oi.seller_id,
+    SUM(oi.price) AS total_revenue
+FROM order_items oi
+GROUP BY oi.seller_id
+ORDER BY total_revenue DESC
+LIMIT 10",
+        'dwh_sql' => "SELECT
+    ds.seller_id,
+    SUM(fp.total_harga) AS total_revenue
+FROM fakta_penjualan fp
+JOIN dim_seller ds
+    ON fp.seller_key = ds.seller_key
+GROUP BY ds.seller_id
+ORDER BY total_revenue DESC
+LIMIT 10"
+    ],
+    'query14' => [
+        'title' => 'Top 10 Pelanggan Berdasarkan Revenue Pembelian',
+        'desc' => 'Menampilkan 10 pelanggan dengan revenue pembelian tertinggi. OLTP menggunakan orders dan order_items, sedangkan DWH menggunakan fakta_penjualan dan dim_pelanggan.',
+        'oltp_sql' => "SELECT
+    o.customer_id,
+    SUM(oi.price) AS total_revenue
+FROM orders o
+JOIN order_items oi
+    ON o.order_id = oi.order_id
+GROUP BY o.customer_id
+ORDER BY total_revenue DESC
+LIMIT 10",
+        'dwh_sql' => "SELECT
+    dp.pelanggan_id,
+    SUM(fp.total_harga) AS total_revenue
+FROM fakta_penjualan fp
+JOIN dim_pelanggan dp
+    ON fp.pelanggan_key = dp.pelanggan_key
+GROUP BY dp.pelanggan_id
+ORDER BY total_revenue DESC
+LIMIT 10"
+    ],
+    'query15' => [
+        'title' => 'Top 5 State dengan Pelanggan Terbanyak',
+        'desc' => 'Menghitung 5 negara bagian dengan jumlah pelanggan tertinggi. OLTP menggunakan tabel customers, sedangkan DWH menggunakan dim_pelanggan.',
+        'oltp_sql' => "SELECT 
+    customer_state AS state,
+    COUNT(*) AS total_pelanggan
+FROM customers
+GROUP BY customer_state
+ORDER BY total_pelanggan DESC
+LIMIT 5",
+        'dwh_sql' => "SELECT 
+    state,
+    COUNT(*) AS total_pelanggan
+FROM dim_pelanggan
+GROUP BY state
+ORDER BY total_pelanggan DESC
+LIMIT 5"
+    ],
+    'query16' => [
+        'title' => 'Rata-rata Waktu Pengiriman per State',
+        'desc' => 'Menghitung rata-rata lama pengiriman berdasarkan state pelanggan. OLTP menggunakan orders dan customers, sedangkan DWH menggunakan fakta_pengiriman dan dim_pelanggan.',
+        'oltp_sql' => "SELECT 
+    c.customer_state AS state,
+    AVG(EXTRACT(DAY FROM (o.order_delivered_customer_date - o.order_purchase_timestamp))) AS avg_delivery_days
+FROM orders o
+JOIN customers c ON o.customer_id = c.customer_id
+WHERE o.order_delivered_customer_date IS NOT NULL
+GROUP BY c.customer_state
+ORDER BY avg_delivery_days DESC",
+        'dwh_sql' => "SELECT 
+    dp.state,
+    AVG(fp.durasi_pengiriman) AS rata_rata_hari_pengiriman
+FROM fakta_pengiriman fp
+JOIN dim_pelanggan dp ON fp.pelanggan_key = dp.pelanggan_key
+GROUP BY dp.state
+ORDER BY rata_rata_hari_pengiriman DESC"
+    ],
+    'query17' => [
+        'title' => 'Rata-rata Waktu Pengiriman per Kategori',
+        'desc' => 'Menghitung rata-rata lama pengiriman berdasarkan kategori produk. OLTP menggunakan orders, order_items dan products, sedangkan DWH menggunakan dim_produk.',
+        'oltp_sql' => "SELECT 
+    pct.product_category_name_english AS kategori,
+    AVG(EXTRACT(DAY FROM (o.order_delivered_customer_date - o.order_purchase_timestamp))) AS avg_delivery_days
+FROM orders o
+JOIN order_items oi ON o.order_id = oi.order_id
+JOIN products p ON oi.product_id = p.product_id
+LEFT JOIN product_category_translation pct ON p.product_category_name = pct.product_category_name
+WHERE o.order_delivered_customer_date IS NOT NULL
+GROUP BY pct.product_category_name_english
+ORDER BY avg_delivery_days DESC",
+        'dwh_sql' => "SELECT
+    dp.kategori,
+    AVG(fp.durasi_pengiriman) AS rata_rata_hari_pengiriman
+FROM fakta_pengiriman fp
+JOIN dim_produk dp ON fp.produk_key = dp.produk_key
+GROUP BY dp.kategori
+ORDER BY rata_rata_hari_pengiriman DESC"
+    ],
+    'query18' => [
+        'title' => 'Rata-rata Rating Kepuasan Pelanggan per Tahun',
+        'desc' => 'Menghitung rata-rata rating review pelanggan per tahun. OLTP menggunakan order_reviews, sedangkan DWH menggunakan fakta_review dan dim_waktu.',
+        'oltp_sql' => "SELECT
+    EXTRACT(YEAR FROM review_creation_date) AS tahun,
+    ROUND(AVG(review_score)::numeric, 2) AS rata_rata_rating
+FROM order_reviews
+GROUP BY tahun
+ORDER BY tahun",
+        'dwh_sql' => "SELECT
+    dw.tahun,
+    ROUND(AVG(fr.skor_review)::numeric, 2) AS rata_rata_rating
+FROM fakta_review fr
+JOIN dim_waktu dw
+    ON fr.waktu_id = dw.waktu_id
+GROUP BY dw.tahun
+ORDER BY dw.tahun"
+    ],
+    'query18' => [
+        'title' => 'Rata-rata Rating Kepuasan Pelanggan per Tahun',
+        'desc' => 'Menghitung rata-rata rating review pelanggan per tahun. OLTP menggunakan order_reviews, sedangkan DWH menggunakan fakta_review dan dim_waktu.',
+        'oltp_sql' => "SELECT
+    EXTRACT(YEAR FROM review_creation_date) AS tahun,
+    ROUND(AVG(review_score)::numeric, 2) AS rata_rata_rating
+FROM order_reviews
+GROUP BY tahun
+ORDER BY tahun",
+        'dwh_sql' => "SELECT
+    dw.tahun,
+    ROUND(AVG(fr.skor_review)::numeric, 2) AS rata_rata_rating
+FROM fakta_review fr
+JOIN dim_waktu dw
+    ON fr.waktu_id = dw.waktu_id
+GROUP BY dw.tahun
+ORDER BY dw.tahun"
     ]
 ];
 
@@ -115,10 +350,15 @@ foreach ($queries as $key => $q) {
         $oltp_time = (microtime(true) - $t0); // detik
         $oltp_err = null;
         $oltp_count = count($rows_oltp);
+        $oltp_value = null;
+        if ($oltp_count === 1 && is_array($rows_oltp[0])) {
+            $oltp_value = array_values($rows_oltp[0])[0];
+        }
     } catch (Exception $e) {
         $oltp_time = 0;
         $oltp_err = $e->getMessage();
         $oltp_count = 0;
+        $oltp_value = null;
     }
 
     // Eksekusi DWH
@@ -129,21 +369,34 @@ foreach ($queries as $key => $q) {
         $dwh_time = (microtime(true) - $t0); // detik
         $dwh_err = null;
         $dwh_count = count($rows_dwh);
+        $dwh_value = null;
+        if ($dwh_count === 1 && is_array($rows_dwh[0])) {
+            $dwh_value = array_values($rows_dwh[0])[0];
+        }
     } catch (Exception $e) {
         $dwh_time = 0;
         $dwh_err = $e->getMessage();
         $dwh_count = 0;
+        $dwh_value = null;
     }
 
     $results[$key] = [
         'oltp_time' => $oltp_time,
         'oltp_count' => $oltp_count,
+        'oltp_value' => $oltp_value,
         'oltp_error' => $oltp_err,
         'dwh_time' => $dwh_time,
         'dwh_count' => $dwh_count,
+        'dwh_value' => $dwh_value,
         'dwh_error' => $dwh_err,
     ];
 }
+
+$total_oltp_time = array_sum(array_column($results, 'oltp_time'));
+$total_dwh_time = array_sum(array_column($results, 'dwh_time'));
+$time_ratio = ($total_dwh_time > 0) ? ($total_oltp_time / $total_dwh_time) : 0;
+$time_ratio_label = $time_ratio > 1 ? number_format($time_ratio, 2) . 'x lebih cepat' : 'Tidak ada perbedaan signifikan';
+$performance_reason = 'DWH umumnya lebih cepat untuk query analitik karena struktur star schema dan denormalisasi membuat data lebih mudah diakses dengan jumlah join yang lebih sedikit serta agregasi yang telah siap pakai.';
 ?>
 <!doctype html>
 <html lang="id">
@@ -355,6 +608,18 @@ foreach ($queries as $key => $q) {
         <div class="col-12 col-xl-7">
             <div class="card-custom p-4 h-100">
                 <h4 class="mb-3">Visualisasi Waktu Eksekusi (Detik)</h4>
+                <div class="mb-4 p-3 rounded" style="background: rgba(15, 23, 42, 0.03); border: 1px solid rgba(15, 23, 42, 0.08);">
+                    <div class="d-flex flex-column flex-sm-row justify-content-between gap-3">
+                        <div>
+                            <div class="text-muted small">Kesimpulan Performa</div>
+                            <div class="fw-semibold" style="font-size: 1.1rem;">DWH <?php echo $time_ratio_label; ?> dibanding OLTP</div>
+                        </div>
+                        <div>
+                            <div class="text-muted small">Alasan</div>
+                            <div class="fw-semibold" style="font-size: 1rem;"><?php echo htmlspecialchars($performance_reason); ?></div>
+                        </div>
+                    </div>
+                </div>
                 <div style="position: relative; height: 400px; width: 100%; padding-bottom: 50px;">
                     <canvas id="benchmarkChart"></canvas>
                 </div>
@@ -486,21 +751,63 @@ foreach ($queries as $key => $q) {
         'Pendapatan per Bulan',
         'Pendapatan & Jumlah per Kategori',
         'Distribusi Pelanggan per State',
-        'Rata-rata Waktu Kirim per Kategori'
+        'Rata-rata Waktu Kirim per Kategori',
+        'Total Pelanggan',
+        'Total Produk',
+        'Total Kategori Produk',
+        'Total Produk Terjual',
+        'Total Revenue',
+        'Revenue Per Waktu',
+        'Metode Pembayaran Terpopuler',
+        'Top 10 Produk Terlaris',
+        'Top 10 Seller Terbaik',
+        'Top 10 Pelanggan Revenue',
+        'Top 5 State Pelanggan',
+        'Rata-rata Waktu Kirim per State',
+        'Rata-rata Waktu Kirim per Kategori',
+        'Rating Kepuasan per Tahun'
     ];
 
     const oltpTimes = [
         <?php echo $results['query1']['oltp_time']; ?>,
         <?php echo $results['query2']['oltp_time']; ?>,
         <?php echo $results['query3']['oltp_time']; ?>,
-        <?php echo $results['query4']['oltp_time']; ?>
+        <?php echo $results['query4']['oltp_time']; ?>,
+        <?php echo $results['query5']['oltp_time']; ?>,
+        <?php echo $results['query6']['oltp_time']; ?>,
+        <?php echo $results['query7']['oltp_time']; ?>,
+        <?php echo $results['query8']['oltp_time']; ?>,
+        <?php echo $results['query9']['oltp_time']; ?>,
+        <?php echo $results['query10']['oltp_time']; ?>,
+        <?php echo $results['query11']['oltp_time']; ?>,
+        <?php echo $results['query12']['oltp_time']; ?>,
+        <?php echo $results['query13']['oltp_time']; ?>,
+        <?php echo $results['query14']['oltp_time']; ?>,
+        <?php echo $results['query15']['oltp_time']; ?>,
+        <?php echo $results['query16']['oltp_time']; ?>,
+        <?php echo $results['query17']['oltp_time']; ?>,
+        <?php echo $results['query18']['oltp_time']; ?>
     ];
 
     const dwhTimes = [
         <?php echo $results['query1']['dwh_time']; ?>,
         <?php echo $results['query2']['dwh_time']; ?>,
         <?php echo $results['query3']['dwh_time']; ?>,
-        <?php echo $results['query4']['dwh_time']; ?>
+        <?php echo $results['query4']['dwh_time']; ?>,
+        <?php echo $results['query5']['dwh_time']; ?>,
+        <?php echo $results['query6']['dwh_time']; ?>,
+        <?php echo $results['query7']['dwh_time']; ?>,
+        <?php echo $results['query8']['dwh_time']; ?>,
+        <?php echo $results['query9']['dwh_time']; ?>,
+        <?php echo $results['query10']['dwh_time']; ?>,
+        <?php echo $results['query11']['dwh_time']; ?>,
+        <?php echo $results['query12']['dwh_time']; ?>,
+        <?php echo $results['query13']['dwh_time']; ?>,
+        <?php echo $results['query14']['dwh_time']; ?>,
+        <?php echo $results['query15']['dwh_time']; ?>,
+        <?php echo $results['query16']['dwh_time']; ?>,
+        <?php echo $results['query17']['dwh_time']; ?>,
+        <?php echo $results['query18']['dwh_time']; ?>
     ];
 
     document.addEventListener("DOMContentLoaded", function() {
